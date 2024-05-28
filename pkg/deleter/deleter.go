@@ -4,17 +4,16 @@ import (
 	"context"
 	"emperror.dev/errors"
 	"fmt"
-	"github.com/je4/filesystem/v2/pkg/writefs"
+	"github.com/je4/filesystem/v3/pkg/writefs"
 	"github.com/je4/mediaserveraction/v2/pkg/actionCache"
-	mediaserveractionproto "github.com/je4/mediaserverproto/v2/pkg/mediaserveraction/proto"
-	mediaserverdbproto "github.com/je4/mediaserverproto/v2/pkg/mediaserverdb/proto"
+	mediaserverproto "github.com/je4/mediaserverproto/v2/pkg/mediaserver/proto"
 	"github.com/je4/utils/v2/pkg/zLogger"
 	"io/fs"
 	"regexp"
 	"strings"
 )
 
-func NewDeleter(db mediaserverdbproto.DBControllerClient, actionController mediaserveractionproto.ActionControllerClient, vfs fs.FS, logger zLogger.ZLogger) (*Deleter, error) {
+func NewDeleter(db mediaserverproto.DatabaseClient, actionController mediaserverproto.ActionClient, vfs fs.FS, logger zLogger.ZLogger) (*Deleter, error) {
 	return &Deleter{
 		db:               db,
 		actionController: actionController,
@@ -25,11 +24,11 @@ func NewDeleter(db mediaserverdbproto.DBControllerClient, actionController media
 }
 
 type Deleter struct {
-	db               mediaserverdbproto.DBControllerClient
+	db               mediaserverproto.DatabaseClient
 	vfs              fs.FS
 	logger           zLogger.ZLogger
 	actionParams     map[string][]string
-	actionController mediaserveractionproto.ActionControllerClient
+	actionController mediaserverproto.ActionClient
 }
 
 func (d *Deleter) getParams(mediaType string, action string) ([]string, error) {
@@ -37,7 +36,7 @@ func (d *Deleter) getParams(mediaType string, action string) ([]string, error) {
 	if params, ok := d.actionParams[sig]; ok {
 		return params, nil
 	}
-	resp, err := d.actionController.GetParams(context.Background(), &mediaserveractionproto.ParamsParam{
+	resp, err := d.actionController.GetParams(context.Background(), &mediaserverproto.ParamsParam{
 		Type:   mediaType,
 		Action: action,
 	})
@@ -60,7 +59,7 @@ func (d *Deleter) DeleteItemCaches(collection, signature string) error {
 var isUrlRegexp = regexp.MustCompile(`^[a-z]+://`)
 
 func (d *Deleter) DeleteCache(collection, signature, action, params string) error {
-	item, err := d.db.GetItem(context.Background(), &mediaserverdbproto.ItemIdentifier{
+	item, err := d.db.GetItem(context.Background(), &mediaserverproto.ItemIdentifier{
 		Collection: collection,
 		Signature:  signature,
 	})
@@ -74,8 +73,8 @@ func (d *Deleter) DeleteCache(collection, signature, action, params string) erro
 	}
 	ps.SetString(params, aparams)
 
-	resp, err := d.db.GetCache(context.Background(), &mediaserverdbproto.CacheRequest{
-		Identifier: &mediaserverdbproto.ItemIdentifier{
+	resp, err := d.db.GetCache(context.Background(), &mediaserverproto.CacheRequest{
+		Identifier: &mediaserverproto.ItemIdentifier{
 			Collection: collection,
 			Signature:  signature,
 		},
@@ -97,8 +96,8 @@ func (d *Deleter) DeleteCache(collection, signature, action, params string) erro
 		return errors.Wrapf(err, "error removing file %s", fullpath)
 	}
 	d.logger.Debug().Msgf("deleting cache %s/%s/%s/%s: %s", collection, signature, action, params, fullpath)
-	_, err = d.db.DeleteCache(context.Background(), &mediaserverdbproto.CacheRequest{
-		Identifier: &mediaserverdbproto.ItemIdentifier{
+	_, err = d.db.DeleteCache(context.Background(), &mediaserverproto.CacheRequest{
+		Identifier: &mediaserverproto.ItemIdentifier{
 			Collection: collection,
 			Signature:  signature,
 		},

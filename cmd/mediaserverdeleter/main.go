@@ -8,11 +8,8 @@ import (
 	genericproto "github.com/je4/genericproto/v2/pkg/generic/proto"
 	"github.com/je4/mediaserverdeleter/v2/configs"
 	"github.com/je4/mediaserverdeleter/v2/pkg/service"
-	mediaserveractionclient "github.com/je4/mediaserverproto/v2/pkg/mediaserveraction/client"
-	mediaserveractionproto "github.com/je4/mediaserverproto/v2/pkg/mediaserveraction/proto"
-	mediaserverdbClient "github.com/je4/mediaserverproto/v2/pkg/mediaserverdb/client"
-	mediaserverdbproto "github.com/je4/mediaserverproto/v2/pkg/mediaserverdb/proto"
-	pb "github.com/je4/mediaserverproto/v2/pkg/mediaserverdeleter/proto"
+	mediaserverclient "github.com/je4/mediaserverproto/v2/pkg/mediaserver/client"
+	mediaserverproto "github.com/je4/mediaserverproto/v2/pkg/mediaserver/proto"
 	resolverclient "github.com/je4/miniresolver/v2/pkg/client"
 	resolverhelper "github.com/je4/miniresolver/v2/pkg/grpchelper"
 	"github.com/je4/trustutil/v2/pkg/certutil"
@@ -112,8 +109,8 @@ func main() {
 	defer resolverCloser.Close()
 	resolverhelper.RegisterResolver(resolver, time.Duration(conf.ResolverTimeout), time.Duration(conf.ResolverNotFoundTimeout), logger)
 
-	dbClientAddr = resolverhelper.GetAddress(mediaserverdbproto.DBController_Ping_FullMethodName)
-	actionControllerClientAddr = resolverhelper.GetAddress(mediaserveractionproto.ActionController_Ping_FullMethodName)
+	dbClientAddr = resolverhelper.GetAddress(mediaserverproto.Database_Ping_FullMethodName)
+	actionControllerClientAddr = resolverhelper.GetAddress(mediaserverproto.Action_Ping_FullMethodName)
 
 	logger.Info().Msgf("resolver address is %s", conf.ResolverAddr)
 	miniResolverClient, miniResolverCloser, err := resolverclient.CreateClient(conf.ResolverAddr, clientTLSConfig)
@@ -123,7 +120,7 @@ func main() {
 	defer miniResolverCloser.Close()
 	resolverhelper.RegisterResolver(miniResolverClient, time.Duration(conf.ResolverTimeout), time.Duration(conf.ResolverNotFoundTimeout), logger)
 
-	dbClient, dbClientConn, err := mediaserverdbClient.CreateClient(dbClientAddr, clientTLSConfig)
+	dbClient, dbClientConn, err := mediaserverclient.NewDatabaseClient(dbClientAddr, clientTLSConfig)
 	if err != nil {
 		logger.Panic().Msgf("cannot create mediaserverdb grpc client: %v", err)
 	}
@@ -138,7 +135,7 @@ func main() {
 		}
 	}
 
-	actionControllerClient, actionControllerClientConn, err := mediaserveractionclient.CreateControllerClient(actionControllerClientAddr, clientTLSConfig)
+	actionControllerClient, actionControllerClientConn, err := mediaserverclient.NewActionClient(actionControllerClientAddr, clientTLSConfig)
 	if err != nil {
 		logger.Panic().Msgf("cannot create mediaserveractioncontroller grpc client: %v", err)
 	}
@@ -168,7 +165,7 @@ func main() {
 
 	// create TLS Certificate.
 	// the certificate MUST contain <package>.<service> as DNS name
-	certutil.AddDefaultDNSNames(resolverhelper.GetService(pb.DeleterController_Ping_FullMethodName))
+	certutil.AddDefaultDNSNames(resolverhelper.GetService(mediaserverproto.Deleter_Ping_FullMethodName))
 	serverTLSConfig, serverLoader, err := loader.CreateServerLoader(true, &conf.ServerTLS, nil, logger)
 	if err != nil {
 		logger.Fatal().Err(err).Msg("cannot create server loader")
@@ -181,7 +178,7 @@ func main() {
 		logger.Fatal().Err(err).Msg("cannot create server")
 	}
 	// register the server
-	pb.RegisterDeleterControllerServer(grpcServer, srv)
+	mediaserverproto.RegisterDeleterServer(grpcServer, srv)
 
 	grpcServer.Startup()
 
