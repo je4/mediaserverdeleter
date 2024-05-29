@@ -1,22 +1,18 @@
 package main
 
 import (
-	"context"
 	"flag"
 	"fmt"
 	"github.com/je4/filesystem/v3/pkg/vfsrw"
-	genericproto "github.com/je4/genericproto/v2/pkg/generic/proto"
 	"github.com/je4/mediaserverdeleter/v2/configs"
 	"github.com/je4/mediaserverdeleter/v2/pkg/service"
-	mediaserverclient "github.com/je4/mediaserverproto/v2/pkg/mediaserver/client"
 	mediaserverproto "github.com/je4/mediaserverproto/v2/pkg/mediaserver/proto"
-	resolverclient "github.com/je4/miniresolver/v2/pkg/client"
-	resolverhelper "github.com/je4/miniresolver/v2/pkg/grpchelper"
+	"github.com/je4/miniresolver/v2/pkg/miniresolverproto"
+	"github.com/je4/miniresolver/v2/pkg/resolver"
 	"github.com/je4/trustutil/v2/pkg/certutil"
 	"github.com/je4/trustutil/v2/pkg/loader"
 	"github.com/je4/utils/v2/pkg/zLogger"
 	"github.com/rs/zerolog"
-	"google.golang.org/protobuf/types/known/emptypb"
 	"io"
 	"io/fs"
 	"log"
@@ -100,55 +96,34 @@ func main() {
 	}
 	defer clientLoader.Close()
 
-	var dbClientAddr, actionControllerClientAddr string
+	// create TLS Certificate.
+	// the certificate MUST contain <package>.<service> as DNS name
+	certutil.AddDefaultDNSNames(miniresolverproto.MiniResolver_ServiceDesc.ServiceName)
+	serverTLSConfig, serverLoader, err := loader.CreateServerLoader(true, &conf.ServerTLS, nil, logger)
+	if err != nil {
+		logger.Fatal().Err(err).Msg("cannot create server loader")
+	}
+	defer serverLoader.Close()
+
 	// create resolver client
-	resolver, resolverCloser, err := resolverclient.CreateClient(conf.ResolverAddr, clientTLSConfig)
+	logger.Info().Msgf("resolver address is %s", conf.ResolverAddr)
+	resolverClient, err := resolver.NewMiniresolverClient(conf.ResolverAddr, conf.GRPCClient, clientTLSConfig, serverTLSConfig, time.Duration(conf.ResolverTimeout), time.Duration(conf.ResolverNotFoundTimeout), logger)
 	if err != nil {
 		logger.Fatal().Err(err).Msg("cannot create resolver client")
 	}
-	defer resolverCloser.Close()
-	resolverhelper.RegisterResolver(resolver, time.Duration(conf.ResolverTimeout), time.Duration(conf.ResolverNotFoundTimeout), logger)
+	defer resolverClient.Close()
 
-	dbClientAddr = resolverhelper.GetAddress(mediaserverproto.Database_Ping_FullMethodName)
-	actionControllerClientAddr = resolverhelper.GetAddress(mediaserverproto.Action_Ping_FullMethodName)
-
-	logger.Info().Msgf("resolver address is %s", conf.ResolverAddr)
-	miniResolverClient, miniResolverCloser, err := resolverclient.CreateClient(conf.ResolverAddr, clientTLSConfig)
+	dbClient, err := resolver.NewClient[mediaserverproto.DatabaseClient](resolverClient, mediaserverproto.NewDatabaseClient, mediaserverproto.Database_ServiceDesc.ServiceName)
 	if err != nil {
-		logger.Fatal().Msgf("cannot create resolver client: %v", err)
+		logger.Fatal().Msgf("cannot create database client: %v", err)
 	}
-	defer miniResolverCloser.Close()
-	resolverhelper.RegisterResolver(miniResolverClient, time.Duration(conf.ResolverTimeout), time.Duration(conf.ResolverNotFoundTimeout), logger)
+	resolver.DoPing(dbClient, logger)
 
-	dbClient, dbClientConn, err := mediaserverclient.NewDatabaseClient(dbClientAddr, clientTLSConfig)
-	if err != nil {
-		logger.Panic().Msgf("cannot create mediaserverdb grpc client: %v", err)
-	}
-	defer dbClientConn.Close()
-	if resp, err := dbClient.Ping(context.Background(), &emptypb.Empty{}); err != nil {
-		logger.Error().Msgf("cannot ping mediaserverdb: %v", err)
-	} else {
-		if resp.GetStatus() != genericproto.ResultStatus_OK {
-			logger.Error().Msgf("cannot ping mediaserverdb: %v", resp.GetStatus())
-		} else {
-			logger.Info().Msgf("mediaserverdb ping response: %s", resp.GetMessage())
-		}
-	}
-
-	actionControllerClient, actionControllerClientConn, err := mediaserverclient.NewActionClient(actionControllerClientAddr, clientTLSConfig)
+	actionClient, err := resolver.NewClient[mediaserverproto.ActionClient](resolverClient, mediaserverproto.NewActionClient, mediaserverproto.Action_ServiceDesc.ServiceName)
 	if err != nil {
 		logger.Panic().Msgf("cannot create mediaserveractioncontroller grpc client: %v", err)
 	}
-	defer actionControllerClientConn.Close()
-	if resp, err := actionControllerClient.Ping(context.Background(), &emptypb.Empty{}); err != nil {
-		logger.Error().Msgf("cannot ping mediaserveractioncontroller: %v", err)
-	} else {
-		if resp.GetStatus() != genericproto.ResultStatus_OK {
-			logger.Error().Msgf("cannot ping mediaserveractioncontroller: %v", resp.GetStatus())
-		} else {
-			logger.Info().Msgf("mediaserveractioncontroller ping response: %s", resp.GetMessage())
-		}
-	}
+	resolver.DoPing(actionClient, logger)
 
 	host, portStr, err := net.SplitHostPort(conf.LocalAddr)
 	if err != nil {
@@ -158,22 +133,13 @@ func main() {
 	if err != nil {
 		logger.Fatal().Err(err).Msgf("invalid port '%s'", portStr)
 	}
-	srv, err := service.NewDeleterController(host, uint32(port), vfs, dbClient, actionControllerClient, logger)
+	srv, err := service.NewDeleterController(host, uint32(port), vfs, dbClient, actionClient, logger)
 	if err != nil {
 		logger.Fatal().Err(err).Msg("cannot create service")
 	}
 
-	// create TLS Certificate.
-	// the certificate MUST contain <package>.<service> as DNS name
-	certutil.AddDefaultDNSNames(resolverhelper.GetService(mediaserverproto.Deleter_Ping_FullMethodName))
-	serverTLSConfig, serverLoader, err := loader.CreateServerLoader(true, &conf.ServerTLS, nil, logger)
-	if err != nil {
-		logger.Fatal().Err(err).Msg("cannot create server loader")
-	}
-	defer serverLoader.Close()
-
 	// create grpc server with resolver for name resolution
-	grpcServer, err := resolverhelper.NewServer(conf.LocalAddr, serverTLSConfig, resolver, logger)
+	grpcServer, err := resolver.NewServer(resolverClient, conf.LocalAddr)
 	if err != nil {
 		logger.Fatal().Err(err).Msg("cannot create server")
 	}
