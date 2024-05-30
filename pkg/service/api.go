@@ -55,10 +55,14 @@ func (*deleterController) DeleteItem(context.Context, *mediaserverproto.ItemIden
 		Data:    nil,
 	}, nil
 }
-func (*deleterController) DeleteItemCaches(context.Context, *mediaserverproto.ItemIdentifier) (*generic.DefaultResponse, error) {
+func (dc *deleterController) DeleteItemCaches(ctx context.Context, cr *mediaserverproto.ItemIdentifier) (*generic.DefaultResponse, error) {
+	num, err := dc.deleter.DeleteItemCaches(cr.GetCollection(), cr.GetSignature())
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "error deleting item caches %s/%s: %v", cr.GetCollection(), cr.GetSignature(), err)
+	}
 	return &generic.DefaultResponse{
-		Status:  generic.ResultStatus_Error,
-		Message: "not implemented",
+		Status:  generic.ResultStatus_OK,
+		Message: fmt.Sprintf("%d item caches %s/%s deleted", num, cr.GetCollection(), cr.GetSignature()),
 		Data:    nil,
 	}, nil
 }

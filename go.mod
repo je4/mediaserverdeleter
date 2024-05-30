@@ -9,10 +9,10 @@ require (
 	github.com/BurntSushi/toml v1.4.0
 	github.com/je4/filesystem/v3 v3.0.2
 	github.com/je4/genericproto/v2 v2.0.3
-	github.com/je4/mediaserveraction/v2 v2.0.6
-	github.com/je4/mediaserverproto/v2 v2.0.23
-	github.com/je4/miniresolver/v2 v2.0.7
-	github.com/je4/trustutil/v2 v2.0.11
+	github.com/je4/mediaserveraction/v2 v2.0.7
+	github.com/je4/mediaserverproto/v2 v2.0.27
+	github.com/je4/miniresolver/v2 v2.0.8
+	github.com/je4/trustutil/v2 v2.0.12
 	github.com/je4/utils/v2 v2.0.38
 	gitlab.switch.ch/ub-unibas/go-ublogger v0.0.0-20240529135102-38bc77a4bfdf
 	google.golang.org/grpc v1.64.0
@@ -37,7 +37,7 @@ require (
 	github.com/rs/xid v1.5.0 // indirect
 	github.com/rs/zerolog v1.33.0 // indirect
 	github.com/telkomdev/go-stash v1.0.4 // indirect
-	go.step.sm/crypto v0.45.1 // indirect
+	go.step.sm/crypto v0.46.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	golang.org/x/crypto v0.23.0 // indirect
 	golang.org/x/exp v0.0.0-20240529005216-23cca8864a10 // indirect

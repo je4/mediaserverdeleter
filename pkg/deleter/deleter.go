@@ -5,9 +5,12 @@ import (
 	"emperror.dev/errors"
 	"fmt"
 	"github.com/je4/filesystem/v3/pkg/writefs"
+	genericproto "github.com/je4/genericproto/v2/pkg/generic/proto"
 	"github.com/je4/mediaserveraction/v2/pkg/actionCache"
 	mediaserverproto "github.com/je4/mediaserverproto/v2/pkg/mediaserver/proto"
 	"github.com/je4/utils/v2/pkg/zLogger"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"io/fs"
 	"regexp"
 	"strings"
@@ -52,11 +55,64 @@ func (d *Deleter) DeleteItem(collection, signature string) error {
 	return nil
 }
 
-func (d *Deleter) DeleteItemCaches(collection, signature string) error {
-	return nil
-}
-
 var isUrlRegexp = regexp.MustCompile(`^[a-z]+://`)
+
+func (d *Deleter) DeleteItemCaches(collection, signature string) (int64, error) {
+	var num int64
+	var page genericproto.PageRequest = genericproto.PageRequest{
+		PageRequest: &genericproto.PageRequest_Page{
+			Page: &genericproto.Page{
+				PageSize: 100,
+				PageNo:   0,
+			},
+		},
+	}
+	for {
+		cacheResult, err := d.db.GetCaches(context.Background(), &mediaserverproto.CachesRequest{
+			Identifier: &mediaserverproto.ItemIdentifier{
+				Collection: collection,
+				Signature:  signature,
+			},
+			PageRequest: &page,
+		})
+		if err != nil {
+			return 0, errors.Wrapf(err, "error getting caches for %s/%s", collection, signature)
+		}
+		for _, cache := range cacheResult.GetCaches() {
+			metadata := cache.GetMetadata()
+			action := metadata.GetAction()
+			params := metadata.GetParams()
+			if action == "item" {
+				continue
+			}
+			if err := d.DeleteCache(collection, signature, action, params); err != nil {
+				return 0, errors.Wrapf(err, "error deleting cache for %s/%s/%s/%s", collection, signature, action, params)
+			}
+			num++
+		}
+		currentPage := cacheResult.GetPageResponse().GetPageResult()
+
+		if currentPage == nil {
+			return 0, errors.Errorf("no page result in cache response")
+		}
+		if currentPage.GetPageNo() < currentPage.GetTotal()-1 {
+			/*
+				page = genericproto.PageRequest{
+					PageRequest: &genericproto.PageRequest_Page{
+						Page: &genericproto.Page{
+							PageSize: currentPage.GetPageSize(),
+							PageNo:   currentPage.GetPageNo() + 1,
+						},
+					},
+				}
+			*/
+
+		} else {
+			break
+		}
+	}
+	return num, nil
+}
 
 func (d *Deleter) DeleteCache(collection, signature, action, params string) error {
 	item, err := d.db.GetItem(context.Background(), &mediaserverproto.ItemIdentifier{
@@ -73,6 +129,7 @@ func (d *Deleter) DeleteCache(collection, signature, action, params string) erro
 	}
 	ps.SetString(params, aparams)
 
+	d.logger.Debug().Msgf("deleting cache %s/%s/%s/%s", collection, signature, action, ps.String())
 	resp, err := d.db.GetCache(context.Background(), &mediaserverproto.CacheRequest{
 		Identifier: &mediaserverproto.ItemIdentifier{
 			Collection: collection,
@@ -82,7 +139,11 @@ func (d *Deleter) DeleteCache(collection, signature, action, params string) erro
 		Params: ps.String(),
 	})
 	if err != nil {
-		return errors.Wrapf(err, "error getting cache for %s/%s", collection, signature)
+		if status, ok := status.FromError(err); ok && status.Code() == codes.NotFound {
+			d.logger.Debug().Msgf("cache %s/%s/%s/%s not found", collection, signature, action, ps.String())
+			return nil
+		}
+		return errors.Wrapf(err, "error getting cache for %s/%s/%s/%s", collection, signature, action, ps.String())
 	}
 	metadata := resp.GetMetadata()
 	fullpath := metadata.GetPath()
