@@ -48,15 +48,21 @@ func (*deleterController) Ping(context.Context, *emptypb.Empty) (*generic.Defaul
 	}, nil
 }
 
-func (*deleterController) DeleteItem(context.Context, *mediaserverproto.ItemIdentifier) (*generic.DefaultResponse, error) {
+func (d *deleterController) DeleteItem(ctx context.Context, id *mediaserverproto.ItemIdentifier) (*generic.DefaultResponse, error) {
+
+	numItems, numCaches, err := d.deleter.DeleteItem(id.GetCollection(), id.GetSignature())
+	if err != nil {
+		d.logger.Error().Err(err).Msgf("error deleting item %s/%s", id.GetCollection(), id.GetSignature())
+		return nil, status.Errorf(codes.Internal, "error deleting item %s/%s: %v", id.GetCollection(), id.GetSignature(), err)
+	}
 	return &generic.DefaultResponse{
-		Status:  generic.ResultStatus_Error,
-		Message: "not implemented",
+		Status:  generic.ResultStatus_OK,
+		Message: fmt.Sprintf("%d items and %d caches deleted", numItems, numCaches),
 		Data:    nil,
 	}, nil
 }
 func (dc *deleterController) DeleteItemCaches(ctx context.Context, cr *mediaserverproto.ItemIdentifier) (*generic.DefaultResponse, error) {
-	num, err := dc.deleter.DeleteItemCaches(cr.GetCollection(), cr.GetSignature())
+	num, err := dc.deleter.DeleteItemCaches(cr.GetCollection(), cr.GetSignature(), false)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "error deleting item caches %s/%s: %v", cr.GetCollection(), cr.GetSignature(), err)
 	}

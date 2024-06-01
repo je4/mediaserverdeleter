@@ -51,13 +51,66 @@ func (d *Deleter) getParams(mediaType string, action string) ([]string, error) {
 	return resp.GetValues(), nil
 }
 
-func (d *Deleter) DeleteItem(collection, signature string) error {
-	return nil
-}
-
 var isUrlRegexp = regexp.MustCompile(`^[a-z]+://`)
 
-func (d *Deleter) DeleteItemCaches(collection, signature string) (int64, error) {
+func (d *Deleter) DeleteItem(collection, signature string) (numItems, numCaches int64, err error) {
+	d.logger.Debug().Msgf("deleting item %s/%s", collection, signature)
+	var page genericproto.PageRequest = genericproto.PageRequest{
+		PageRequest: &genericproto.PageRequest_Page{
+			Page: &genericproto.Page{
+				PageSize: 100,
+				PageNo:   0,
+			},
+		},
+	}
+	for {
+		itemsResult, err := d.db.GetChildItems(context.Background(), &mediaserverproto.ItemsRequest{
+			Identifier: &mediaserverproto.ItemIdentifier{
+				Collection: collection,
+				Signature:  signature,
+			},
+			PageRequest: &page,
+		})
+		if err != nil {
+			if status, ok := status.FromError(err); ok && status.Code() == codes.NotFound {
+				d.logger.Debug().Msgf("no child items for %s/%s", collection, signature)
+				break
+			} else {
+				return 0, 0, errors.Wrapf(err, "error getting child items for %s/%s", collection, signature)
+			}
+		}
+		for _, item := range itemsResult.GetItems() {
+			if ni, nc, err := d.DeleteItem(item.GetIdentifier().GetCollection(), item.GetIdentifier().GetSignature()); err != nil {
+				return 0, 0, errors.Wrapf(err, "error deleting item %s/%s", item.GetIdentifier().GetCollection(), item.GetIdentifier().GetSignature())
+			} else {
+				numItems += ni
+				numCaches += nc
+			}
+		}
+		currentPage := itemsResult.GetPageResponse().GetPageResult()
+		if currentPage == nil {
+			break
+		}
+	}
+	if num, err := d.DeleteItemCaches(collection, signature, true); err != nil {
+		return 0, 0, errors.Wrapf(err, "error deleting caches for %s/%s", collection, signature)
+	} else {
+		numCaches += num
+		d.logger.Debug().Msgf("deleted %d caches for %s/%s", num, collection, signature)
+	}
+	resp, err := d.db.DeleteItem(context.Background(), &mediaserverproto.ItemIdentifier{
+		Collection: collection,
+		Signature:  signature,
+	})
+	if err != nil {
+		return 0, 0, errors.Wrapf(err, "error deleting item %s/%s", collection, signature)
+	}
+	numItems++
+	d.logger.Debug().Msgf("deleted item %s/%s: [%d] %s", collection, signature, resp.GetStatus(), resp.GetMessage())
+	return
+}
+
+func (d *Deleter) DeleteItemCaches(collection, signature string, withItem bool) (int64, error) {
 	var num int64
 	var page genericproto.PageRequest = genericproto.PageRequest{
 		PageRequest: &genericproto.PageRequest_Page{
@@ -82,7 +135,7 @@ func (d *Deleter) DeleteItemCaches(collection, signature string) (int64, error) 
 			metadata := cache.GetMetadata()
 			action := metadata.GetAction()
 			params := metadata.GetParams()
-			if action == "item" {
+			if !withItem && action == "item" {
 				continue
 			}
 			if err := d.DeleteCache(collection, signature, action, params); err != nil {
@@ -93,21 +146,9 @@ func (d *Deleter) DeleteItemCaches(collection, signature string) (int64, error) 
 		currentPage := cacheResult.GetPageResponse().GetPageResult()
 
 		if currentPage == nil {
-			return 0, errors.Errorf("no page result in cache response")
+			break
 		}
-		if currentPage.GetPageNo() < currentPage.GetTotal()-1 {
-			/*
-				page = genericproto.PageRequest{
-					PageRequest: &genericproto.PageRequest_Page{
-						Page: &genericproto.Page{
-							PageSize: currentPage.GetPageSize(),
-							PageNo:   currentPage.GetPageNo() + 1,
-						},
-					},
-				}
-			*/
-
-		} else {
+		if currentPage.GetPageNo() >= currentPage.GetTotal()-1 {
 			break
 		}
 	}
@@ -150,11 +191,13 @@ func (d *Deleter) DeleteCache(collection, signature, action, params string) erro
 	if !isUrlRegexp.MatchString(fullpath) {
 		storage := metadata.GetStorage()
 		fullpath = fmt.Sprintf("%s/%s", storage.GetFilebase(), strings.TrimPrefix(fullpath, "/"))
-	}
-	d.logger.Debug().Msgf("deleting file %s", fullpath)
-	if err := writefs.Remove(d.vfs, fullpath); err != nil {
-		d.logger.Error().Err(err).Msgf("error removing file %s", fullpath)
-		return errors.Wrapf(err, "error removing file %s", fullpath)
+		d.logger.Debug().Msgf("deleting file %s", fullpath)
+		if err := writefs.Remove(d.vfs, fullpath); err != nil {
+			d.logger.Error().Err(err).Msgf("error removing file %s", fullpath)
+			return errors.Wrapf(err, "error removing file %s", fullpath)
+		}
+	} else {
+		d.logger.Debug().Msgf("not deleting url %s", fullpath)
 	}
 	d.logger.Debug().Msgf("deleting cache %s/%s/%s/%s: %s", collection, signature, action, params, fullpath)
 	_, err = d.db.DeleteCache(context.Background(), &mediaserverproto.CacheRequest{
