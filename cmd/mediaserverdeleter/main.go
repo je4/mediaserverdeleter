@@ -46,11 +46,8 @@ func main() {
 	}
 
 	// create logger instance
-	hostname, err := os.Hostname()
-	if err != nil {
-		log.Fatalf("cannot get hostname: %v", err)
-	}
 
+	var err error
 	var loggerTLSConfig *tls.Config
 	var loggerLoader io.Closer
 	if conf.Log.Stash.TLS != nil {
@@ -74,6 +71,10 @@ func main() {
 		defer _logfile.Close()
 	}
 
+	hostname, err := os.Hostname()
+	if err != nil {
+		log.Fatalf("cannot get hostname: %v", err)
+	}
 	l2 := _logger.With().Timestamp().Str("host", hostname).Logger() //.Output(output)
 	var logger zLogger.ZLogger = &l2
 
@@ -113,7 +114,7 @@ func main() {
 	defer resolverClient.Close()
 
 	// create grpc server with resolver for name resolution
-	grpcServer, err := resolverClient.NewServer(conf.LocalAddr)
+	grpcServer, err := resolverClient.NewServer(conf.LocalAddr, conf.ServerDomains)
 	if err != nil {
 		logger.Fatal().Err(err).Msg("cannot create server")
 	}
@@ -156,6 +157,7 @@ func main() {
 	fmt.Println("press ctrl+c to stop server")
 	s := <-done
 	fmt.Println("got signal:", s)
+	//select {}
 
 	defer grpcServer.Shutdown()
 

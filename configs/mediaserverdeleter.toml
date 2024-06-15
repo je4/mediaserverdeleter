@@ -1,5 +1,6 @@
 #localaddr = ":7645"
 localaddr = ":0"
+serverdomains = ["ubmedia", ""]
 resolveraddr = "[::1]:7777"
 resolvertimeout = "10m"
 resolvernotfoundtimeout = "10s"
@@ -124,5 +125,5 @@ dataset=""
 type="file"
 cert="certs/ub-log.ub.unibas.ch.cert.pem"
 key="certs/ub-log.ub.unibas.ch.key.pem"
-ca="certs/ca.crt"
+ca=["certs/ca.crt"]
 interval="1h"
