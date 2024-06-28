@@ -14,6 +14,7 @@ import (
 type MediaserverDeleterConfig struct {
 	LocalAddr               string                 `toml:"localaddr"`
 	ServerDomains           []string               `toml:"serverdomains"`
+	SingleService           bool                   `toml:"singleservice"`
 	ResolverAddr            string                 `toml:"resolveraddr"`
 	ResolverTimeout         config.Duration        `toml:"resolvertimeout"`
 	ResolverNotFoundTimeout config.Duration        `toml:"resolvernotfoundtimeout"`

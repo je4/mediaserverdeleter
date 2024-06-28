@@ -1,6 +1,7 @@
 #localaddr = ":7645"
 localaddr = ":0"
 serverdomains = ["ubmedia", ""]
+singleservice = true
 resolveraddr = "[::1]:7777"
 resolvertimeout = "10m"
 resolvernotfoundtimeout = "10s"
@@ -34,7 +35,7 @@ Endpoint = "s3-zh.lts.switch.ch"
 Region = "zurich"
 UseSSL = true
 Debug = false
-ver_CAPEM = """-----BEGIN CERTIFICATE-----
+_CAPEM = """-----BEGIN CERTIFICATE-----
 MIIEyDCCA7CgAwIBAgIQDPW9BitWAvR6uFAsI8zwZjANBgkqhkiG9w0BAQsFADBh
 MQswCQYDVQQGEwJVUzEVMBMGA1UEChMMRGlnaUNlcnQgSW5jMRkwFwYDVQQLExB3
 d3cuZGlnaWNlcnQuY29tMSAwHgYDVQQDExdEaWdpQ2VydCBHbG9iYWwgUm9vdCBH

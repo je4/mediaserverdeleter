@@ -9,7 +9,7 @@ require (
 	github.com/je4/genericproto/v2 v2.0.3
 	github.com/je4/mediaserveraction/v2 v2.0.18
 	github.com/je4/mediaserverproto/v2 v2.0.35
-	github.com/je4/miniresolver/v2 v2.0.16
+	github.com/je4/miniresolver/v2 v2.0.17
 	github.com/je4/trustutil/v2 v2.0.19
 	github.com/je4/utils/v2 v2.0.41
 	gitlab.switch.ch/ub-unibas/go-ublogger v0.0.0-20240612084645-ba4f8357c0d4
