@@ -1,16 +1,17 @@
 module github.com/je4/mediaserverdeleter/v2
 
-go 1.22.3
+go 1.22.5
 
 require (
 	emperror.dev/errors v0.8.1
 	github.com/BurntSushi/toml v1.4.0
-	github.com/je4/filesystem/v3 v3.0.11
+	github.com/je4/certloader/v2 v2.0.0-20240718145717-fd73c415a8d4
+	github.com/je4/filesystem/v3 v3.0.12
 	github.com/je4/genericproto/v2 v2.0.3
 	github.com/je4/mediaserveraction/v2 v2.0.18
-	github.com/je4/mediaserverproto/v2 v2.0.35
+	github.com/je4/mediaserverproto/v2 v2.0.36
 	github.com/je4/miniresolver/v2 v2.0.17
-	github.com/je4/trustutil/v2 v2.0.19
+	github.com/je4/trustutil/v2 v2.0.20
 	github.com/je4/utils/v2 v2.0.41
 	gitlab.switch.ch/ub-unibas/go-ublogger v0.0.0-20240612084645-ba4f8357c0d4
 	google.golang.org/grpc v1.64.0
